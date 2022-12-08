@@ -55,7 +55,7 @@ function App() {
       var deployedNetwork = localStorage.getItem('rps_gameaddress');
       const rpsContract = new web3.eth.Contract(
         RPS.abi,
-        deployedNetwork && deployedNetwork.address,
+        deployedNetwork,
       );
 
       setGameAddress(deployedNetwork);
@@ -144,7 +144,7 @@ function App() {
 
   async function updateGame() {
     if (!isRPSReady()) return;
-    debugger;
+    
     var c2 = await rpsContract.methods.c2().call();
     var stake = await rpsContract.methods.stake().call();
     var lastAction = await rpsContract.methods.lastAction().call();
@@ -158,6 +158,8 @@ function App() {
     setTimeout(timeout);
     setJ1(j1);
     setJ2(j2);
+
+    setGameState(gameStateENUM.JOINED);
   }
 
   async function play(e) {
@@ -179,33 +181,6 @@ function App() {
     await rpsContract.methods.solve(moveId, salt).send({ from: accounts[0] });
     await updateGame();
   }
-
-  async function joinGame() {
-    await contract.methods
-      .joinGame(game.id)
-      .send({from: accounts[0], value: game.bet});
-    await updateGame();
-  };
-
-  async function commitMove(e) {
-    e.preventDefault();
-    const select = e.target.elements[0];
-    const moveId = select.options[select.selectedIndex].value;
-    const salt = Math.floor(Math.random() * 1000);  
-    await contract.methods
-      .commitMove(game.id, moveId, salt)
-      .send({from: accounts[0]});
-    setMove({id: moveId, salt});
-    await updateGame();
-  };
-
-  async function revealMove() {
-    await contract.methods
-      .revealMove(game.id, move.id, move.salt)
-      .send({from: accounts[0]});
-    setMove(undefined);
-    await updateGame();
-  };
 
   function getGameState() {
     if (c2 == 0 && lastAction == 0)
@@ -235,7 +210,8 @@ function App() {
 
     setRpsContract(rpsContract);
 
-    //localStorage.setItem('rps_gameaddress', address);
+    localStorage.setItem('rps_gameaddress', address);
+    setGameAddress(address);
   }
 
   if(typeof game.state === 'undefined') {
@@ -276,7 +252,11 @@ function App() {
 
       {gameState == gameStateENUM.CREATED && <>
       
-        <p>Game Address: {gameAddress == undefined ? 'Not created' : gameAddress}</p>
+        <p>
+          Game Address: {gameAddress == undefined ? 'Not created' : gameAddress}
+          <div>Please give the above address to player 2 so they can join the game</div>
+        </p>
+        
         <p><span>State: </span> 
           {getGameState() == 0 && 'Create Game'}
           {getGameState() == 1 && 'Waiting for player 2 to play'}
@@ -315,6 +295,7 @@ function App() {
       </>}
 
       {gameState == gameStateENUM.JOINED && <>
+        <p>Game Address: {gameAddress}</p>
         <p>J1: {j1}</p>
         <p>J2: {j2}</p>
         <p>Stake: {stake} wei</p>
