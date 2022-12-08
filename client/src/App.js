@@ -6,7 +6,13 @@ import { getWeb3 } from './utils.js';
 const states = ['IDLE', 'CREATED', 'JOINED', 'COMMITED', 'REVEALED'];
 
 const moves = ['Null', 'Rock', 'Paper', 'Scissors', 'Spock', 'Lizard'];
-const gameState = [];
+//const gameState = ['Null', 'Created', 'Joined'];
+const gameStateENUM = {
+  INIT: 0,
+  CREATED: 1,
+  JOINED: 2
+}
+///  {(new Date(parseInt(ballot.end) * 1000)).toLocaleString()}
 
 function App() {
   const [web3, setWeb3] = useState(undefined);
@@ -15,12 +21,18 @@ function App() {
   const [game, setGame] = useState({state: '0'});
   const [move, setMove] = useState();
 
+  const [gameState, setGameState] = useState(gameStateENUM.INIT);
+
   const [hasherContract, setHasherContract] = useState(undefined);
   const [rpsContract, setRpsContract] = useState(undefined);
   const [c2, setC2] = useState(0);
   const [lastAction, setLastAction] = useState(0);
   const [stake, setStake] = useState(0);
   const [timeout, setTimeout] = useState(0);
+  const [j1, setJ1] = useState(undefined);
+  const [j2, setJ2] = useState(undefined);
+
+  const [gameAddress, setGameAddress] = useState(undefined);
 
   useEffect(() => {
     const init = async () => {
@@ -31,20 +43,30 @@ function App() {
         { type: 'bytes32', value: 'ola' });
       
       
-        
+      
 
       const networkId = await web3.eth.net.getId();
-      const deployedNetwork = Hasher.networks[networkId];
+      var deployedNetwork = Hasher.networks[networkId];
       const hasherContract = new web3.eth.Contract(
         Hasher.abi,
         deployedNetwork && deployedNetwork.address,
       );
 
+      var deployedNetwork = localStorage.getItem('rps_gameaddress');
+      const rpsContract = new web3.eth.Contract(
+        RPS.abi,
+        deployedNetwork && deployedNetwork.address,
+      );
+
+      setGameAddress(deployedNetwork);
+
+      debugger;
 
       setWeb3(web3);
       setAccounts(accounts);
 
       setHasherContract(hasherContract);
+      setRpsContract(rpsContract);
     }
     init();
     window.ethereum.on('accountsChanged', accounts => {
@@ -62,7 +84,7 @@ function App() {
 
   const isRPSReady = () => {
     return (
-      typeof rpsContract !== 'undefined' 
+      (typeof rpsContract !== 'undefined' && rpsContract.options.address != null)
       && typeof web3 !== 'undefined'
       && typeof accounts !== 'undefined'
     );
@@ -73,6 +95,12 @@ function App() {
       //updateGame();
     }
   }, [accounts, hasherContract, web3]);
+
+  useEffect(() => {
+    if(isRPSReady()) {
+      updateGame();
+    }
+  }, [accounts, rpsContract, web3]);
 
   // useEffect(() => {
   //   if(isReady()) {
@@ -94,6 +122,8 @@ function App() {
       .send({ from: accounts[0], value: stake });
 
     setRpsContract(rpsContract);
+    setGameAddress(rpsContract.options.address);
+    localStorage.setItem('rps_gameaddress', rpsContract.options.address);
   }
 
   async function createGame(e) {
@@ -113,36 +143,40 @@ function App() {
   }
 
   async function updateGame() {
-    if (!isRPSReady) return;
-
+    if (!isRPSReady()) return;
+    debugger;
     var c2 = await rpsContract.methods.c2().call();
     var stake = await rpsContract.methods.stake().call();
     var lastAction = await rpsContract.methods.lastAction().call();
-    var timeout = await rpsContract.methods.lastAction().call();
+    var timeout = await rpsContract.methods.TIMEOUT().call();
+    var j1 = await rpsContract.methods.j1().call();
+    var j2 = await rpsContract.methods.j2().call();
 
     setC2(c2);
     setStake(stake);
     setLastAction(lastAction);
     setTimeout(timeout);
+    setJ1(j1);
+    setJ2(j2);
   }
 
   async function play(e) {
     e.preventDefault();
 
     const moveId = e.target.elements[0].value;
-    const stake = e.target.elements[1].value;
+    //const stake = e.target.elements[1].value;
     
     await rpsContract.methods.play(moveId).send({ from: accounts[0], value: stake });
     await updateGame();
   }
 
   async function solve(e) {
-    e.preventDefault();
+    //e.preventDefault();
 
     var moveId = localStorage.getItem('rps_moveId');
     var salt = localStorage.getItem('rps_salt');
 
-    await rpsContract.methods.solve(moveId, salt);
+    await rpsContract.methods.solve(moveId, salt).send({ from: accounts[0] });
     await updateGame();
   }
 
@@ -178,10 +212,30 @@ function App() {
       return 0;
     if (c2 == 0 && lastAction > 0)
       return 1;
-    if (c2 > 0 && lastAction > 0)
+    if (c2 > 0 && lastAction > 0 && stake > 0)
       return 2;
-    if (c2 > 0 && lastAction > 0)
+    if (c2 > 0 && lastAction > 0 && stake == 0)
       return 3;
+  }
+
+  function createGameState() {
+    setGameState(gameStateENUM.CREATED);
+  }
+
+  function joinGameState(e) {
+    e.preventDefault();
+    setGameState(gameStateENUM.JOINED);
+
+    const address = e.target.elements[0].value;
+
+    const rpsContract = new web3.eth.Contract(
+      RPS.abi,
+      address
+    );
+
+    setRpsContract(rpsContract);
+
+    //localStorage.setItem('rps_gameaddress', address);
   }
 
   if(typeof game.state === 'undefined') {
@@ -191,122 +245,132 @@ function App() {
   return (
     <div className="container">
       <h1 className="text-center">Rock Paper Scissors</h1>
-      <p><span>State: </span> 
-        {getGameState() == 0 && 'Create Game'}
-        {getGameState() == 1 && 'Waiting for player 2 to play'}
-        {getGameState() == 2 && 'Waiting for player 1 to solve'}
-        {getGameState() == 3 && 'Game over'}
-      </p>
-      <p>Stake: {stake} wei</p>
 
-      {getGameState() == 0 && <>
-        <form onSubmit={e => createGame(e)}>
-          <div className="form-group">
-            <label>Participant</label>
-            <input type="text" className="form-control" id="participant" />
-          </div>
-          <div className="form-group">
-            <label>Bet/Stake</label>
-            <input type="number" className="form-control" id="bet" />
-          </div>
-          <div className="form-group">
-            <label>Move ID</label>
-            <select className="form-control" id="move">
-              {moves.map((move, index) => {
-                return <option value={index}>{move}</option>
-              })}
-              
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Salt</label>
-            <input type="number" className="form-control" id="salt" />
-          </div>
-          <button type="submit" className="btn btn-primary">Submit</button>
-        </form>
-      </>}
-
-      <p>State: {states[game.state]}</p>
-      {game.state === '1' ? (
-        <>
-          <p>Bet: {game.bet}</p>
-          <div>
-            <h2>Players</h2>
-            <ul>
-              {game.players.map(player => <li key={player}>{player}</li>)}
-            </ul>
-          </div>
-        </>
-      ) : null}
-
-      {game.state === '0' ? (
+      {gameState == gameStateENUM.INIT && <>
         <div className="row">
-          <div className="col-sm-12">
-            <h2>Create Game</h2>
-            <form onSubmit={e => createGame(e)}>
-              <div className="form-group">
-                <label htmlFor="participant">Participant</label>
-                <input type="text" className="form-control" id="participant" />
-              </div>
-              <div className="form-group">
-                <label htmlFor="bet">Bet</label>
-                <input type="text" className="form-control" id="bet" />
-              </div>
-              <button type="submit" className="btn btn-primary">Submit</button>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
-      {game.state === '1' 
-       && game.players[1].toLowerCase() === accounts[0].toLowerCase() ? (
-        <div className="row">
-          <div className="col-sm-12">
-            <h2>Bet</h2>
-              <button 
-                onClick={e => joinGame()}
-                type="submit" 
-                className="btn btn-primary"
-              >
-                Submit
-              </button>
-          </div>
-        </div>
-      ) : null}
-
-      {game.state === '2' ? (
-        <div className="row">
-          <div className="col-sm-12">
-            <h2>Commit move</h2>
-            <form onSubmit={e => commitMove(e)}>
-              <div className="form-group">
-                <label htmlFor="move">Move</label>
-                <select className="form-control" id="move">
-                  <option value="1">Rock</option>
-                  <option value="2">Paper</option>
-                  <option value="3">Scissors</option>
-                </select>
-              </div>
-              <button type="submit" className="btn btn-primary">Submit</button>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
-      {game.state === '3' ? (
-        <div className="row">
-          <div className="col-sm-12">
-            <h2>Reveal move</h2>
+        <div className="col-sm-12">
+          <h2>Create Game</h2>
             <button 
-              onClick={() => revealMove()}
+              onClick={e => createGameState()}
               type="submit" 
               className="btn btn-primary"
             >
               Submit
             </button>
+        </div>
+        </div>
+        <br />
+        <div className="row">
+          <div className="col-sm-12">
+            <h2>Join Game</h2>
+            <form onSubmit={e => joinGameState(e)}>
+              <div className="form-group">
+                <label htmlFor="participant">Game Address</label>
+                <input type="text" className="form-control" id="participant" />
+              </div>
+              <button type="submit" className="btn btn-primary">Submit</button>
+            </form>
           </div>
         </div>
-      ) : null}
+      </>}
+
+      {gameState == gameStateENUM.CREATED && <>
+      
+        <p>Game Address: {gameAddress == undefined ? 'Not created' : gameAddress}</p>
+        <p><span>State: </span> 
+          {getGameState() == 0 && 'Create Game'}
+          {getGameState() == 1 && 'Waiting for player 2 to play'}
+          {getGameState() == 2 && 'Waiting for player 1 to solve'}
+          {getGameState() == 3 && 'Game over'}
+        </p>
+        <p>Stake: {stake} wei</p>
+
+        {getGameState() == 0 && <>
+          <form onSubmit={e => createGame(e)}>
+            <div className="form-group">
+              <label>Participant</label>
+              <input type="text" className="form-control" id="participant" />
+            </div>
+            <div className="form-group">
+              <label>Bet/Stake</label>
+              <input type="number" className="form-control" id="bet" />
+            </div>
+            <div className="form-group">
+              <label>Move ID</label>
+              <select className="form-control" id="move">
+                {moves.map((move, index) => {
+                  return <option value={index}>{move}</option>
+                })}
+                
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Salt</label>
+              <input type="number" className="form-control" id="salt" />
+            </div>
+            <button type="submit" className="btn btn-primary">Submit</button>
+          </form>
+        </>}
+
+      </>}
+
+      {gameState == gameStateENUM.JOINED && <>
+        <p>J1: {j1}</p>
+        <p>J2: {j2}</p>
+        <p>Stake: {stake} wei</p>
+        <p>lastAction: {lastAction}</p>
+
+        <p><span>State: </span> 
+          {getGameState() == 1 && 'Waiting for player 2 to play'}
+          {getGameState() == 2 && 'Waiting for player 1 to solve'}
+          {getGameState() == 3 && 'Game over'}
+        </p>
+
+        {j1 == accounts[0] && <>
+          {getGameState() == 2 && <>
+            <div className="row">
+              <div className="col-sm-12">
+                <h2>Solve Game</h2>
+                  <button 
+                    onClick={e => solve()}
+                    type="submit" 
+                    className="btn btn-primary"
+                  >
+                    Submit
+                  </button>
+              </div>
+            </div>
+
+          </>}
+        </>}
+        
+        {j2 == accounts[0] && <>
+          {getGameState() == 1 && <>
+            <div className="row">
+              <div className="col-sm-12">
+                <h2>Play</h2>
+                <form onSubmit={e => play(e)}>
+                  <div className="form-group">
+                    <label>Move ID</label>
+                    <select className="form-control" id="move">
+                      {moves.map((move, index) => {
+                        return <option value={index}>{move}</option>
+                      })}
+                      
+                    </select>
+                  </div>
+                  <button type="submit" className="btn btn-primary">Submit</button>
+                </form>
+              </div>
+            </div>
+          </>}
+          
+        </>}
+        
+        
+      </>}
+      
+
     </div>
   );
 }
