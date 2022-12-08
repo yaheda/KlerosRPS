@@ -33,6 +33,7 @@ function App() {
   const [j2, setJ2] = useState(undefined);
 
   const [gameAddress, setGameAddress] = useState(undefined);
+  const [timeleft, setTimeleft] = useState(undefined);
 
   useEffect(() => {
     const init = async () => {
@@ -151,7 +152,7 @@ function App() {
     var timeout = await rpsContract.methods.TIMEOUT().call();
     var j1 = await rpsContract.methods.j1().call();
     var j2 = await rpsContract.methods.j2().call();
-
+    
     setC2(c2);
     setStake(stake);
     setLastAction(lastAction);
@@ -160,6 +161,7 @@ function App() {
     setJ2(j2);
 
     setGameState(gameStateENUM.JOINED);
+    initTimeleft(parseInt(lastAction), parseInt(timeout));
   }
 
   async function play(e) {
@@ -219,6 +221,19 @@ function App() {
     localStorage.removeItem("rps_moveId");
     localStorage.removeItem("rps_salt");
     setGameState(gameStateENUM.INIT);
+  }
+
+  function initTimeleft(lastAction, timeout) {
+    
+    setInterval(() => {
+      var start = (new Date(lastAction * 1000));
+      var now = new Date();
+      var difference = now.getTime() - start.getTime();
+      var timeleft = timeout - (difference/1000);
+      //var timeleft = new Date(myEndDateTime - durationInMinutes * MS_PER_MINUTE)
+      setTimeleft(timeleft + ' seconds');
+    }, 1000)
+    
   }
 
   if(typeof game.state === 'undefined') {
@@ -306,7 +321,8 @@ function App() {
         <p>J1: {j1}</p>
         <p>J2: {j2}</p>
         <p>Stake: {stake} wei</p>
-        <p>lastAction: {lastAction}</p>
+        <p>lastAction: {(new Date(parseInt(lastAction) * 1000)).toLocaleString()}</p>
+        <p>Time left: {timeleft}</p>
 
         <p><span>State: </span> 
           {getGameState() == 1 && 'Waiting for player 2 to play'}
