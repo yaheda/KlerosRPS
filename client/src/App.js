@@ -214,6 +214,13 @@ function App() {
     setGameAddress(address);
   }
 
+  function reset() {
+    localStorage.removeItem("rps_gameaddress");
+    localStorage.removeItem("rps_moveId");
+    localStorage.removeItem("rps_salt");
+    setGameState(gameStateENUM.INIT);
+  }
+
   if(typeof game.state === 'undefined') {
     return <div>Loading...</div>;
   }
@@ -346,6 +353,21 @@ function App() {
             </div>
           </>}
           
+        </>}
+
+        {getGameState() == 3 && <>
+          <div className="row">
+              <div className="col-sm-12">
+                <h2>Reset Game</h2>
+                  <button 
+                    onClick={e => reset()}
+                    type="submit" 
+                    className="btn btn-primary"
+                  >
+                    Submit
+                  </button>
+              </div>
+            </div>
         </>}
         
         
