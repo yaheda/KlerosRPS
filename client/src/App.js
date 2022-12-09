@@ -35,6 +35,8 @@ function App() {
   const [gameAddress, setGameAddress] = useState(undefined);
   const [timeleft, setTimeleft] = useState(undefined);
 
+  const intervalRef = React.useRef();
+
   useEffect(() => {
     const init = async () => {
       const web3 = await getWeb3();
@@ -61,7 +63,6 @@ function App() {
 
       setGameAddress(deployedNetwork);
 
-      debugger;
 
       setWeb3(web3);
       setAccounts(accounts);
@@ -102,6 +103,25 @@ function App() {
       updateGame();
     }
   }, [accounts, rpsContract, web3]);
+
+  useEffect( () => {
+    function updateTimeleft() {
+      
+      var start = (new Date(lastAction * 1000));
+      var now = new Date();
+      var difference = now.getTime() - start.getTime();
+      var timeleft = timeout - (difference/1000);
+      setTimeleft(timeleft);
+      
+      updateGame();
+    }
+    var timer = setInterval(updateTimeleft, 1000);
+
+    return function stopTimer() {
+      clearInterval(timer);
+    }
+      
+  }, [c2, lastAction, j1, j2])
 
   // useEffect(() => {
   //   if(isReady()) {
@@ -153,6 +173,8 @@ function App() {
     var j1 = await rpsContract.methods.j1().call();
     var j2 = await rpsContract.methods.j2().call();
     
+    //initTimeleft(parseInt(lastAction), parseInt(timeout));
+debugger;
     setC2(c2);
     setStake(stake);
     setLastAction(lastAction);
@@ -161,7 +183,7 @@ function App() {
     setJ2(j2);
 
     setGameState(gameStateENUM.JOINED);
-    initTimeleft(parseInt(lastAction), parseInt(timeout));
+    
   }
 
   async function play(e) {
@@ -187,12 +209,14 @@ function App() {
   function getGameState() {
     if (c2 == 0 && lastAction == 0)
       return 0;
-    if (c2 == 0 && lastAction > 0)
+    if (c2 == 0 && lastAction > 0 && stake > 0)
       return 1;
     if (c2 > 0 && lastAction > 0 && stake > 0)
       return 2;
     if (c2 > 0 && lastAction > 0 && stake == 0)
       return 3;
+    if (stake == 0)
+      return 4;
   }
 
   function createGameState() {
@@ -221,17 +245,45 @@ function App() {
     localStorage.removeItem("rps_moveId");
     localStorage.removeItem("rps_salt");
     setGameState(gameStateENUM.INIT);
+    setRpsContract(undefined);
+    setC2(0);
+    setLastAction(0);
+    setStake(0);
+    setTimeout(0);
+    setJ1(undefined);
+    setJ2(undefined);
+    setGameAddress(undefined);
+    setTimeleft(undefined);
+  }
+
+  async function jTimeout() {
+    debugger;
+    if (accounts[0] == j1 && c2 == 0) {
+      await rpsContract.methods.j2Timeout().send({ from: accounts[0] });
+    } else if (accounts[0] == j2 && c2 > 0) {
+      await rpsContract.methods.j1Timeout().send({ from: accounts[0] });
+    }   
+    await updateGame(); 
   }
 
   function initTimeleft(lastAction, timeout) {
-    
-    setInterval(() => {
+    if (!intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    setTimeleft(0);
+
+    intervalRef.current = setInterval(async () => {
       var start = (new Date(lastAction * 1000));
       var now = new Date();
       var difference = now.getTime() - start.getTime();
       var timeleft = timeout - (difference/1000);
       //var timeleft = new Date(myEndDateTime - durationInMinutes * MS_PER_MINUTE)
-      setTimeleft(timeleft + ' seconds');
+      setTimeleft(timeleft);
+
+      //if (timeleft < 0) {
+        //await jTimeout();
+      //}
     }, 1000)
     
   }
@@ -322,13 +374,48 @@ function App() {
         <p>J2: {j2}</p>
         <p>Stake: {stake} wei</p>
         <p>lastAction: {(new Date(parseInt(lastAction) * 1000)).toLocaleString()}</p>
-        <p>Time left: {timeleft}</p>
+        <p>Time left: {timeleft} seconds</p>
 
         <p><span>State: </span> 
           {getGameState() == 1 && 'Waiting for player 2 to play'}
           {getGameState() == 2 && 'Waiting for player 1 to solve'}
-          {getGameState() == 3 && 'Game over'}
+          {getGameState() == 3 && 'Game over - by play'}
+          {getGameState() == 4 && 'Game over - by timeout'}
         </p>
+
+        {(getGameState() == 1 || getGameState() == 2) && <>
+          {timeleft < 0 && <>
+            {accounts[0] == j1 && c2 == 0 && <>
+              <div className="row">
+                <div className="col-sm-12">
+                  <h2>Timeout - take back the funds from j2</h2>
+                    <button 
+                      onClick={e => jTimeout()}
+                      type="submit" 
+                      className="btn btn-primary"
+                    >
+                      Submit
+                    </button>
+                </div>
+              </div>
+            </>}
+            {accounts[0] == j2 && c2 > 0 && <>
+              <div className="row">
+                <div className="col-sm-12">
+                  <h2>Timeout - take back the funds from j1</h2>
+                    <button 
+                      onClick={e => jTimeout()}
+                      type="submit" 
+                      className="btn btn-primary"
+                    >
+                      Submit
+                    </button>
+                </div>
+              </div>
+            </>}
+            
+          </>}
+        </>}
 
         {j1 == accounts[0] && <>
           {getGameState() == 2 && <>
@@ -371,7 +458,7 @@ function App() {
           
         </>}
 
-        {getGameState() == 3 && <>
+        {(getGameState() == 3 || getGameState() == 4) && <>
           <div className="row">
               <div className="col-sm-12">
                 <h2>Reset Game</h2>
