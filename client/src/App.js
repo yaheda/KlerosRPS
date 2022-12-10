@@ -35,6 +35,8 @@ function App() {
   const [gameAddress, setGameAddress] = useState(undefined);
   const [timeleft, setTimeleft] = useState(undefined);
 
+  const [isloading, setIsloading] = useState(false);
+
   const intervalRef = React.useRef();
 
   useEffect(() => {
@@ -113,7 +115,7 @@ function App() {
       var timeleft = timeout - (difference/1000);
       setTimeleft(timeleft);
       
-      updateGame();
+      updateGame(true);
     }
     var timer = setInterval(updateTimeleft, 1000);
 
@@ -133,18 +135,25 @@ function App() {
     return Math.floor(Math.random() * (max - min) ) + min;
   }
 
-  async function createGameTransaction(move, salt, player2, stake) {
-    var hash = await hasherContract.methods.hash(move, salt).call();
-    var rpsContract = await new web3.eth.Contract(RPS.abi)
-      .deploy({ 
-          data: RPS.bytecode, 
-          arguments: [hash, player2] // Writing you arguments in the array
-      })
-      .send({ from: accounts[0], value: stake });
 
-    setRpsContract(rpsContract);
-    setGameAddress(rpsContract.options.address);
-    localStorage.setItem('rps_gameaddress', rpsContract.options.address);
+  async function createGameTransaction(move, salt, player2, stake) {
+    setIsloading(true);
+
+      var hash = await hasherContract.methods.hash(move, salt).call();
+      var rpsContract = await new web3.eth.Contract(RPS.abi)
+        .deploy({ 
+            data: RPS.bytecode, 
+            arguments: [hash, player2] // Writing you arguments in the array
+        })
+        .send({ from: accounts[0], value: stake });
+  
+      setRpsContract(rpsContract);
+      setGameAddress(rpsContract.options.address);
+      localStorage.setItem('rps_gameaddress', rpsContract.options.address);
+
+    
+
+    setIsloading(false);
   }
 
   async function createGame(e) {
@@ -163,9 +172,12 @@ function App() {
     await updateGame();
   }
 
-  async function updateGame() {
+  async function updateGame(fromtimer) {
     if (!isRPSReady()) return;
     
+    if (!fromtimer)
+      setIsloading(true);
+
     var c2 = await rpsContract.methods.c2().call();
     var stake = await rpsContract.methods.stake().call();
     var lastAction = await rpsContract.methods.lastAction().call();
@@ -174,7 +186,7 @@ function App() {
     var j2 = await rpsContract.methods.j2().call();
     
     //initTimeleft(parseInt(lastAction), parseInt(timeout));
-debugger;
+
     setC2(c2);
     setStake(stake);
     setLastAction(lastAction);
@@ -183,27 +195,34 @@ debugger;
     setJ2(j2);
 
     setGameState(gameStateENUM.JOINED);
+
+    if (!fromtimer)
+      setIsloading(false);
     
   }
 
   async function play(e) {
     e.preventDefault();
+    setIsloading(true);
 
     const moveId = e.target.elements[0].value;
     //const stake = e.target.elements[1].value;
     
     await rpsContract.methods.play(moveId).send({ from: accounts[0], value: stake });
     await updateGame();
+
+    setIsloading(false);
   }
 
   async function solve(e) {
     //e.preventDefault();
-
+    setIsloading(true);
     var moveId = localStorage.getItem('rps_moveId');
     var salt = localStorage.getItem('rps_salt');
 
     await rpsContract.methods.solve(moveId, salt).send({ from: accounts[0] });
     await updateGame();
+    setIsloading(false);
   }
 
   function getGameState() {
@@ -225,19 +244,31 @@ debugger;
 
   function joinGameState(e) {
     e.preventDefault();
+
+    setIsloading(true);
+
     setGameState(gameStateENUM.JOINED);
 
-    const address = e.target.elements[0].value;
+    try {
+      const address = e.target.elements[0].value;
 
-    const rpsContract = new web3.eth.Contract(
-      RPS.abi,
-      address
-    );
+      const rpsContract = new web3.eth.Contract(
+        RPS.abi,
+        address
+      );
+  
+      setRpsContract(rpsContract);
+  
+      localStorage.setItem('rps_gameaddress', address);
+      setGameAddress(address);
+    } catch(e) {
+      alert('Ooops unable to create contract');
+      window.location.reload();
+    }
 
-    setRpsContract(rpsContract);
+    
 
-    localStorage.setItem('rps_gameaddress', address);
-    setGameAddress(address);
+    setIsloading(false);
   }
 
   function reset() {
@@ -257,13 +288,14 @@ debugger;
   }
 
   async function jTimeout() {
-    debugger;
+    setIsloading(true);
     if (accounts[0] == j1 && c2 == 0) {
       await rpsContract.methods.j2Timeout().send({ from: accounts[0] });
     } else if (accounts[0] == j2 && c2 > 0) {
       await rpsContract.methods.j1Timeout().send({ from: accounts[0] });
     }   
     await updateGame(); 
+    setIsloading(false);
   }
 
   function initTimeleft(lastAction, timeout) {
@@ -369,7 +401,12 @@ debugger;
       </>}
 
       {gameState == gameStateENUM.JOINED && <>
-        <p>Game Address: {gameAddress}</p>
+        <p>Game Address: {gameAddress}
+          {accounts[0] == j1 && <>
+            <div>Please give the above address to player 2 so they can join the game</div>
+          </>}
+        </p>
+        
         <p>J1: {j1}</p>
         <p>J2: {j2}</p>
         <p>Stake: {stake} wei</p>
@@ -458,10 +495,14 @@ debugger;
           
         </>}
 
-        {(getGameState() == 3 || getGameState() == 4) && <>
+        {(getGameState() != 0 || (gameState == gameStateENUM.JOINED && j1 == 0)) && <>
+          <br /><br />
+          {/* {(gameState == gameStateENUM.JOINED && j1 == 0) && <>
+            <p>Oooops the address is wrong, please exit</p>
+          </>} */}
           <div className="row">
               <div className="col-sm-12">
-                <h2>Reset Game</h2>
+                <h2>Exit Game</h2>
                   <button 
                     onClick={e => reset()}
                     type="submit" 
@@ -475,8 +516,12 @@ debugger;
         
         
       </>}
-      
-
+      <br /><br />
+      {isloading == true && <>
+        <h1>Loading...</h1>
+      </>}
+      <br /><br />
+      <div>Mixed strategy Nash equilibria of this game is <b>1/5</b></div>
     </div>
   );
 }

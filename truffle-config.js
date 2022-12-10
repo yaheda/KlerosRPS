@@ -46,6 +46,7 @@
 
 // const HDWalletProvider = require('@truffle/hdwallet-provider');
 const path = require("path");
+const HDWalletProvider = require('@truffle/hdwallet-provider');
 module.exports = {
   /**
    * Networks define how you connect to your ethereum client and let you set the
@@ -69,6 +70,16 @@ module.exports = {
      port: 7545,            // Standard Ethereum port (default: none)
      network_id: "*",       // Any network (default: none)
     },
+    goerli: {
+      provider: () => new HDWalletProvider(
+        ['fe6e1d4e5c23ea1a9493d18626ff889febb1e59d63698f3e58721a56fb58eef1'], 
+        
+        `https://goerli.infura.io/v3/840994ee89b5433e87463df368896c27`, 0, 3),
+      network_id: 5,     // Goerli's id
+      //gas: 30000000,
+      //gasPrice: 25000000000
+      skipDryRun: false
+    }
     //
     // An additional network, but with some advanced options…
     // advanced: {
